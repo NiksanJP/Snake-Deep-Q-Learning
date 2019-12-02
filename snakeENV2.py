@@ -13,6 +13,7 @@ class ENV:
         self.run = False
         self.actions = ["right", "left", "down", "up"]
         self.primMove = True
+        self.reward = 0
         
         #Move
         self.primMove = "up"
@@ -81,9 +82,18 @@ class ENV:
         self.colorPink = (255,200,200)
         self.colorBgColor_white = (255,255,255)
         self.colorBgColor_black = (0,0,0)
+    
+    def rewardChange(self, r):
+        if r == 0:
+            r = -10
+        elif r < 0: 
+            r -= 10
+        elif r > 0:
+            r *= 10
         
+        return r
+            
     def newAction(self, action):
-        reward = 0
         done = False
         
         if action == None:
@@ -109,12 +119,15 @@ class ENV:
         #backing
         if [a,b] == self.agent[0]:
             print("BACKING")
-            reward = -20
-            return self.board, [self.rewardLocationX, self.rewardLocationY], self.agent, reward, done
+            self.reward = -200
+            
+            self.reward = self.rewardChange(self.reward)
+            
+            return self.board, [self.rewardLocationX, self.rewardLocationY], self.agent, self.reward, done
         
         #Reward
         if [a,b] == [self.rewardLocationX, self.rewardLocationY]:
-            reward = 50
+            self.reward = 50
             newBody = self.agent[-1:][0]
             print(newBody)
             self.agent.insert(0, [newBody[0], newBody[1]])
@@ -123,10 +136,10 @@ class ENV:
         #Touch own body
         if [a,b] in self.agent:
             print("TOUCH OWN BODY")
-            reward = -20
+            self.reward = -100
             done = True
-            print("REWARD : ", reward)
-            return self.board, [self.rewardLocationX, self.rewardLocationY], self.agent, reward, done
+            print("REWARD : ", self.reward)
+            return self.board, [self.rewardLocationX, self.rewardLocationY], self.agent, self.reward, done
             
             self.reset()
             self.newReward()
@@ -135,12 +148,14 @@ class ENV:
             self.updateBoard()  
             self.printBoard()
             
-            return self.board, [self.rewardLocationX, self.rewardLocationY], self.agent, reward, done
+            self.reward = self.rewardChange(self.reward)
+            
+            return self.board, [self.rewardLocationX, self.rewardLocationY], self.agent, self.reward, done
             
         #Touch a Wall 
         if a == 20 or a == -1 or b == -1 or b == 20:
             print("OUTSIDE")
-            reward = -20
+            self.reward = -20
             self.reset()
             self.newReward()
             done = True
@@ -148,22 +163,26 @@ class ENV:
             self.updateBoard()  
             self.printBoard()
             
-            return self.board, [self.rewardLocationX, self.rewardLocationY], self.agent, reward, done
+            self.reward = self.rewardChange(self.reward)
+            
+            return self.board, [self.rewardLocationX, self.rewardLocationY], self.agent, self.reward, done
         
         if a != 19 or a != 0 or b != 0 or b != 19:
             self.agent.insert(0, [a,b])
             self.agent = self.agent[:-1]
 
-        print("REWARD : ", reward)
+        self.reward = self.rewardChange(self.reward)
+        print("REWARD : ", self.reward)
 
         self.updateBoard()  
         self.printBoard()
-        return self.board, [self.rewardLocationX, self.rewardLocationY], self.agent, reward, done
+        return self.board, [self.rewardLocationX, self.rewardLocationY], self.agent, self.reward, done
     
     def reset(self):
         self.agent = [[10,10],[10,11],[10,12]]
         self.headAgent = self.agent[0]
         self.run = True
+        self.reward = 0
         
         self.board = [
             ["_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_"],

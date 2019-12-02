@@ -6,6 +6,10 @@ import time
 import sys
 import os
 
+# Disclaimer from the Author himself
+# "What is going on in this code. Even me the author fails to understand after a few months"
+# Good luck mate
+
 class agent:
     def __init__(self, actions):
         """ 
@@ -15,17 +19,20 @@ class agent:
            Q target => Q(s,a) = reward(s,a) + g X maxQ(s2, a)
     
         DEEP Q Learning
+            maybe but s -> state and a -> action
            Q target Q(s,a) = r(s,a) + g X Q(s2, argmax Q(s2, a))
         """
         
         #GAME PROPERTIES
         self.batchSize = 16
-        self.learningRate = 0.01
+        self.learningRate = 0.05
         self.discountRate = 0.9
-        self.dropoutRate = 0.1
-        self.epsilon = 1
+        self.dropoutRate = 0.05
+        self.epsilon = 0.9
         self.minEpsilon = 0.3
         self.epsilon_decay = 0.9
+        self.count = 0
+        self.currentLearnRateCount = 0
         
         self.actions = actions
         
@@ -40,7 +47,7 @@ class agent:
         self.batchIndex = 2
         self.model = self.createModel()
         
-        checkPointPath = "training/training/cp.ckpt"
+        checkPointPath = "training/checkpoint"
         self.checkPointDIR = os.path.dirname(checkPointPath)
         
         self.cp_callback = tf.keras.callbacks.ModelCheckpoint(self.checkPointDIR,
@@ -48,14 +55,23 @@ class agent:
                                                              verbose=0)
         
         try:
+            self.model.load_weights('training/model_weights.h5')
+            print("################################################")
+            print("#############Training Data Loaded###############")
+            print("################################################")
             self.model.load_weights(checkPointPath)
-        except Exception:
+            print("################################################")
+            print("#############Training Data Loaded###############")
+            print("################################################")
+        except Exception as ex:
+            print(ex)
             pass
         #LOAD MEMORY
         try:
             data = pd.read_csv("memory.csv")
             self.memory = data.values.tolist()
-        except:
+        except Exception as ex:
+            print(ex)
             pass
     
     def createTable(self):
@@ -101,10 +117,17 @@ class agent:
             tf.keras.layers.Dense(32, input_shape=(20,20), activation='relu'),
             tf.keras.layers.Flatten(),
             tf.keras.layers.Dense(64, activation='relu'),
+            tf.keras.layers.Dropout(self.dropoutRate),
             tf.keras.layers.Dense(128, activation='relu'),
+            tf.keras.layers.Dropout(self.dropoutRate),
+            tf.keras.layers.Dense(256, activation='relu'),
+            tf.keras.layers.Dropout(self.dropoutRate),
+            tf.keras.layers.Dense(128, activation='relu'),
+            tf.keras.layers.Dropout(self.dropoutRate),
             tf.keras.layers.Dense(64, activation='relu'),
+            tf.keras.layers.Dropout(self.dropoutRate),
             tf.keras.layers.Dense(32, activation='relu'),
-            tf.keras.layers.Dense(4, activation="linear")
+            tf.keras.layers.Dense(4, activation="softmax")
         ])
 
         optimizer = tf.keras.optimizers.Adadelta()
@@ -117,18 +140,22 @@ class agent:
             for y in range(20):
                 if board[x][y] == '_':
                     board[x][y] = 0
-                elif board[x][y] == 'S':
+                elif board[x][y] == 'S': #Snake
                     board[x][y] = 1
-                elif board[x][y] == 'R':
+                elif board[x][y] == 'R': #Reward
                     board[x][y] = 2
         return board
     
     def learn(self):
         model = self.model
+        maxSize = len(self.memory)
         batch = None
         
+        print("LEARNING")
+        
         if len(self.memory) >= self.batchSize:
-            batch = self.memory[-2:]
+            batch = self.memory[-self.currentLearnRateCount:]
+            self.currentLearnRateCount += 5000
             self.batchIndex += self.batchSize
             
             for currentBoard, currentAgent, currentRewardLocation, action, reward, newBoard, newAgent, newRewardLocation, done in batch:
@@ -160,7 +187,7 @@ class agent:
                 y = currentBoard, currentRewardLocation
                 
                 if not done:
-                    target = ( reward + self.discountRate * np.amax(self.model.predict(x)) )
+                    target = ( reward + self.discountRate * np.amax(model.predict(x)) )
 
                 finalTarget = model.predict(y)
                 
@@ -175,10 +202,16 @@ class agent:
                 
                 finalTarget[0][action] = target
                 
-                self.model.fit([currentBoard, currentRewardLocation], [finalTarget], epochs=1, callbacks = [self.cp_callback], verbose=0)
+                model.fit([currentBoard, currentRewardLocation], [finalTarget], epochs=1, verbose=0)
                 
                 if self.epsilon > self.minEpsilon:
                     self.epsilon *= self.epsilon_decay
+        
+        print("Saving MODEL")    
+        model.save_weights('training/model_weights.h5')
+        
+        print("GIVING BACK TO MODEL")
+        self.model = model
                     
     def chooseAction(self, board, agent, rewardLocation):
         if np.random.rand() <= self.epsilon:
@@ -195,7 +228,7 @@ class agent:
         return pred
     
     def saveWeights(self):
-        self.model.save_weights('training/snakWeights.h5')
+        self.model.save_weights('training/model_weights.h5')
     
     def saveMemory(self):
         df = pd.DataFrame(self.memory, colummns =["column"])

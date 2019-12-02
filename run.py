@@ -2,6 +2,7 @@ import snakeENV2
 import agent
 import time
 import os
+import threading
 
 env = snakeENV2.ENV()
 agent = agent.agent(env.actions)
@@ -23,7 +24,6 @@ while True:
     try:
         episode += 1
         print("EPISODE : ", episode)
-        print("REWARD : ", totalReward)
 
         action = agent.chooseAction(board, agentLocation, rewardLocation)
         
@@ -33,8 +33,11 @@ while True:
         
         prevBoard, prevRewardLocation, prevAgentLocation = board, rewardLocation, agentLocation
         
-        if len(agent.memory) >= agent.batchSize:
+        if episode % 5000 == 0:
+            #threading.Thread(target=agent.learn).start()
             agent.learn()
     
-    except Exception:
-        continue
+    except Exception as e:
+        print(e)
+        print("Exit from run exception")
+        exit()
