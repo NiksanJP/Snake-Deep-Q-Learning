@@ -85,9 +85,9 @@ class ENV:
     
     def rewardChange(self, r):
         if r == 0:
-            r = -10
+            r = 1
         elif r < 0: 
-            r -= 10
+            r += 1
         elif r > 0:
             r *= 10
         
@@ -119,7 +119,7 @@ class ENV:
         #backing
         if [a,b] == self.agent[0]:
             print("BACKING")
-            self.reward = -200
+            self.reward = -20
             
             self.reward = self.rewardChange(self.reward)
             
@@ -136,7 +136,7 @@ class ENV:
         #Touch own body
         if [a,b] in self.agent:
             print("TOUCH OWN BODY")
-            self.reward = -100
+            self.reward = -10
             done = True
             print("REWARD : ", self.reward)
             return self.board, [self.rewardLocationX, self.rewardLocationY], self.agent, self.reward, done
@@ -164,6 +164,7 @@ class ENV:
             self.printBoard()
             
             self.reward = self.rewardChange(self.reward)
+            self.reward *= 2
             
             return self.board, [self.rewardLocationX, self.rewardLocationY], self.agent, self.reward, done
         
@@ -182,7 +183,7 @@ class ENV:
         self.agent = [[10,10],[10,11],[10,12]]
         self.headAgent = self.agent[0]
         self.run = True
-        self.reward = 0
+        #self.reward = 0
         
         self.board = [
             ["_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_"],
@@ -274,4 +275,3 @@ class ENV:
         img = cv2.imread('pic.png')  
         cv2.imshow('pic', img)
         cv2.waitKey(1)
-                    

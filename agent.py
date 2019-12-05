@@ -24,13 +24,15 @@ class agent:
         """
         
         #GAME PROPERTIES
-        self.batchSize = 16
+        self.batchSize = 64
         self.learningRate = 0.05
         self.discountRate = 0.9
-        self.dropoutRate = 0.05
-        self.epsilon = 0.9
-        self.minEpsilon = 0.3
+        self.dropoutRate = 0.75
+        
+        self.epsilon = 1000
+        self.minEpsilon = 0.01
         self.epsilon_decay = 0.9
+        
         self.count = 0
         self.currentLearnRateCount = 0
         
@@ -130,8 +132,8 @@ class agent:
             tf.keras.layers.Dense(4, activation="softmax")
         ])
 
-        optimizer = tf.keras.optimizers.Adadelta()
-        model.compile( loss = 'mse', optimizer = optimizer)
+        optimizer = tf.keras.optimizers.Adam()
+        model.compile( loss = 'categorical_crossentropy', optimizer = optimizer, metrics=['accuracy'])
         model.summary()
         return model
     
@@ -153,9 +155,10 @@ class agent:
         
         print("LEARNING")
         
-        if len(self.memory) >= self.batchSize:
+        if len(self.memory) >= 1000:
+            batch = random.sample(self.memory, 1000)
             batch = self.memory[-self.currentLearnRateCount:]
-            self.currentLearnRateCount += 5000
+            self.currentLearnRateCount += 1000
             self.batchIndex += self.batchSize
             
             for currentBoard, currentAgent, currentRewardLocation, action, reward, newBoard, newAgent, newRewardLocation, done in batch:
@@ -202,7 +205,7 @@ class agent:
                 
                 finalTarget[0][action] = target
                 
-                model.fit([currentBoard, currentRewardLocation], [finalTarget], epochs=1, verbose=0)
+                model.fit([currentBoard, currentRewardLocation], finalTarget, epochs=2, verbose=0)
                 
                 if self.epsilon > self.minEpsilon:
                     self.epsilon *= self.epsilon_decay
@@ -212,6 +215,7 @@ class agent:
         
         print("GIVING BACK TO MODEL")
         self.model = model
+        self.saveMemory()
                     
     def chooseAction(self, board, agent, rewardLocation):
         if np.random.rand() <= self.epsilon:
@@ -231,8 +235,6 @@ class agent:
         self.model.save_weights('training/model_weights.h5')
     
     def saveMemory(self):
-        df = pd.DataFrame(self.memory, colummns =["column"])
-        df.to_csv('memory.csv', index=False)
-        self.tableAgentReward.to_csv('tableAgentReward.csv', index=False)
-        self.tableBoardReward.to_csv('tableBoardReward.csv', index=False)
+        df = pd.DataFrame(self.memory)
+        df.to_csv('training/memory.csv', index=False)
         print("SAVE ALL SUCCESS")

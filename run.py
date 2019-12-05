@@ -16,7 +16,6 @@ print("REMEMBER THE NONE ACTION")
 agent.remember(board, agentLocation,rewardLocation, "up", reward, None, None, None, done)
 prevBoard, prevRewardLocation, prevAgentLocation = board, rewardLocation, agentLocation
 
-
 episode = 0
 totalReward = 0
 
@@ -33,7 +32,7 @@ while True:
         
         prevBoard, prevRewardLocation, prevAgentLocation = board, rewardLocation, agentLocation
         
-        if episode % 5000 == 0:
+        if episode % 1000 == 0:
             #threading.Thread(target=agent.learn).start()
             agent.learn()
     
