@@ -3,6 +3,7 @@ import agent
 import time
 import os
 import threading
+import atexit
 
 env = snakeENV2.ENV()
 agent = agent.agent(env.actions)
@@ -32,8 +33,7 @@ while True:
         
         prevBoard, prevRewardLocation, prevAgentLocation = board, rewardLocation, agentLocation
         
-        if episode % 1000 == 0:
-            #threading.Thread(target=agent.learn).start()
+        if done:
             agent.learn()
     
     except Exception as e:

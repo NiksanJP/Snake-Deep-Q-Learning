@@ -5,6 +5,7 @@ import pandas as pd
 import time
 import sys
 import os
+import atexit
 
 # Disclaimer from the Author himself
 # "What is going on in this code. Even me the author fails to understand after a few months"
@@ -24,14 +25,14 @@ class agent:
         """
         
         #GAME PROPERTIES
-        self.batchSize = 64
-        self.learningRate = 0.05
-        self.discountRate = 0.9
-        self.dropoutRate = 0.75
+        self.batchSize = 128
+        self.learningRate = 0.001
+        self.discountRate = 0.1
+        self.dropoutRate = 0.2
         
-        self.epsilon = 1000
-        self.minEpsilon = 0.01
-        self.epsilon_decay = 0.9
+        self.epsilon = 1
+        self.minEpsilon = 0.05
+        self.epsilon_decay = 0.95
         
         self.count = 0
         self.currentLearnRateCount = 0
@@ -41,8 +42,10 @@ class agent:
         #Databases
         self.tableAgentReward = self.createTable()
         self.tableBoardReward = self.createTable()
+        #Need to change to pandas database
         self.memoryFile = "memory"
-        self.memory = []
+        self.memory = pd.DataFrame(columns=['currentBoard', 'action', 'reward', 'newBoard', 'done'])
+        self.memoryList = []
         
         #Deep Learning 
         self.batchSize = 2
@@ -75,6 +78,9 @@ class agent:
         except Exception as ex:
             print(ex)
             pass
+            
+        #Exit Handler
+        atexit.register(self.exiting)
     
     def createTable(self):
         return pd.DataFrame(columns = self.actions, dtype = np.float64)
@@ -100,15 +106,21 @@ class agent:
             )
     
     def remember(self, currentBoard, currentAgent, currentRewardLocation, action, reward, newBoard, newAgent, newRewardLocation, done):
-        self.memory.append([    currentBoard,
-                                currentAgent,
-                                currentRewardLocation,
-                                action,
-                                reward,
-                                newBoard,
-                                newAgent,
-                                newRewardLocation,
-                                done])
+        self.memoryList.append([    currentBoard,
+                                    currentAgent,
+                                    currentRewardLocation,
+                                    action,
+                                    reward,
+                                    newBoard,
+                                    newAgent,
+                                    newRewardLocation,
+                                    done])
+        
+        self.memory = self.memory.append({'currentBoard':currentBoard, 
+                            'action':action, 
+                            'reward':reward, 
+                            'newBoard':newBoard, 
+                            'done':done}, ignore_index=True)
         
         #Save everything in the Q Table
         self.checkStateExistAgent(str( [newBoard, newRewardLocation] ) )
@@ -144,55 +156,25 @@ class agent:
                     board[x][y] = 0
                 elif board[x][y] == 'S': #Snake
                     board[x][y] = 1
-                elif board[x][y] == 'R': #Reward
+                elif board[x][y] == 'H': #Snake
                     board[x][y] = 2
+                elif board[x][y] == 'R': #Reward
+                    board[x][y] = 5
         return board
     
     def learn(self):
-        model = self.model
-        maxSize = len(self.memory)
+        maxSize = self.memory.shape[0]
         batch = None
         
         print("LEARNING")
         
-        if len(self.memory) >= 1000:
-            batch = random.sample(self.memory, 1000)
+        if maxSize >= 1000:
             batch = self.memory[-self.currentLearnRateCount:]
-            self.currentLearnRateCount += 1000
+            batch = batch.values.tolist()
+            self.currentLearnRateCount += 100
             self.batchIndex += self.batchSize
-            
-            for currentBoard, currentAgent, currentRewardLocation, action, reward, newBoard, newAgent, newRewardLocation, done in batch:
-                
-                currentBoard = self.convertToArray(currentBoard)
-                currentBoard = np.array(currentBoard)
-                currentBoard = np.full((20,20), currentBoard)
-                currentBoard = currentBoard[np.newaxis, :, :]
-                
-                currentRewardLocation = np.array(currentRewardLocation)
-                currentRewardLocation = np.full((1,2), currentRewardLocation)
-                currentRewardLocation = currentRewardLocation[np.newaxis, :, :]
 
-                if newBoard is not None:
-                    newBoard = self.convertToArray(newBoard)
-                else:
-                    newBoard = currentBoard
-                newBoard = np.array(newBoard)
-                newBoard = np.full((20,20), newBoard)
-                newBoard = newBoard[np.newaxis, :, :]
-                
-                newRewardLocation = np.array(newRewardLocation)
-                newRewardLocation = np.full((1,2), newRewardLocation)
-                newRewardLocation = newRewardLocation[np.newaxis, :, :]
-
-                target = reward
-                
-                x = newBoard, newRewardLocation
-                y = currentBoard, currentRewardLocation
-                
-                if not done:
-                    target = ( reward + self.discountRate * np.amax(model.predict(x)) )
-
-                finalTarget = model.predict(y)
+            for currentBoard, action, reward, newBoard, done in batch:
                 
                 if action == "right":
                     action = 0
@@ -202,23 +184,40 @@ class agent:
                     action = 2
                 elif action == "up":
                     action = 3
+                    
+                currentBoard = self.convertToArray(currentBoard)
+                currentBoard = np.array(currentBoard)
+                currentBoard = np.full((20,20), currentBoard)
+                currentBoard = currentBoard[np.newaxis, :, :]
                 
-                finalTarget[0][action] = target
+                if newBoard is not None:
+                    newBoard = self.convertToArray(newBoard)
+                else:
+                    newBoard = currentBoard
+                newBoard = np.array(newBoard)
+                newBoard = np.full((20,20), newBoard)
+                newBoard = newBoard[np.newaxis, :, :]
                 
-                model.fit([currentBoard, currentRewardLocation], finalTarget, epochs=2, verbose=0)
+                finalTarget = self.model.predict(currentBoard)
                 
-                if self.epsilon > self.minEpsilon:
+                #Show fit the action that gives the most reward
+                if reward == 5:
+                    finalTarget[0][action] += 0.1
+                elif reward == 0: 
+                    finalTarget[0][action] += 0.01
+                
+                self.model.fit([currentBoard], finalTarget, epochs=1, verbose=0)
+                
+                if self.epsilon > self.minEpsilon and self.currentLearnRateCount >= 100:
                     self.epsilon *= self.epsilon_decay
+
+            self.exiting()
         
-        print("Saving MODEL")    
-        model.save_weights('training/model_weights.h5')
         
-        print("GIVING BACK TO MODEL")
-        self.model = model
-        self.saveMemory()
                     
     def chooseAction(self, board, agent, rewardLocation):
-        if np.random.rand() <= self.epsilon:
+        if random.randrange(0,1) <= self.epsilon:
+            print("RANDOM ACTION")
             return np.random.choice(self.actions)
         board = self.convertToArray(board)
         board = np.array(board)
@@ -228,7 +227,7 @@ class agent:
         rewardLocation = np.array(rewardLocation)
         rewardLocation = np.full((1,2), rewardLocation)
         rewardLocation = rewardLocation[np.newaxis, :, :]
-        pred = np.argmax(self.model.predict([board, rewardLocation])[0])
+        pred = np.argmax(self.model.predict([board])[0])
         return pred
     
     def saveWeights(self):
@@ -238,3 +237,8 @@ class agent:
         df = pd.DataFrame(self.memory)
         df.to_csv('training/memory.csv', index=False)
         print("SAVE ALL SUCCESS")
+        
+    def exiting(self):
+        print("Saving MODEL")    
+        self.model.save_weights('training/model_weights.h5')
+        self.saveMemory()
