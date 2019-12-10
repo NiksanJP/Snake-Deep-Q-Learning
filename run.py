@@ -4,6 +4,7 @@ import time
 import os
 import threading
 import atexit
+import subprocess
 
 env = snakeENV2.ENV()
 agent = agent.agent(env.actions)
@@ -14,29 +15,31 @@ print("NONE ACTION")
 board, rewardLocation, agentLocation, reward, done = env.newAction(None)
 
 print("REMEMBER THE NONE ACTION")
-agent.remember(board, agentLocation,rewardLocation, "up", reward, None, None, None, done)
 prevBoard, prevRewardLocation, prevAgentLocation = board, rewardLocation, agentLocation
 
 episode = 0
 totalReward = 0
+game = 0
+gameLength = 0
 
 while True:
-    try:
-        episode += 1
-        print("EPISODE : ", episode)
+    episode += 1
+    print("EPISODE : ", episode)
+    print("GAME : ", game)
 
-        action = agent.chooseAction(board, agentLocation, rewardLocation)
-        
-        board, rewardLocation, agentLocation, reward, done = env.newAction(action)
-        
-        agent.remember(prevBoard, prevAgentLocation, prevRewardLocation, action, reward, board, agentLocation, rewardLocation, done)
-        
-        prevBoard, prevRewardLocation, prevAgentLocation = board, rewardLocation, agentLocation
-        
-        if done:
-            agent.learn()
+    action = agent.chooseAction(board, rewardLocation)
     
-    except Exception as e:
-        print(e)
-        print("Exit from run exception")
-        exit()
+    board, rewardLocation, agentLocation, reward, done = env.newAction(action)
+    
+    agent.remember(prevBoard, action, reward, rewardLocation, board, done)
+    
+    prevBoard, prevRewardLocation, prevAgentLocation = board, rewardLocation, agentLocation
+    
+    if done:
+        game += 1
+    gameLength += 1
+    if done and game % 1 == 0:
+        agent.learn(gameLength)  
+        gameLength = 0
+    
+    os.system('cls' if os.name == 'nt' else 'clear')

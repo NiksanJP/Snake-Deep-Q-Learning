@@ -108,13 +108,13 @@ class ENV:
         
         #Reward
         if [a,b] == [self.rewardLocationX, self.rewardLocationY]:
-            self.reward = 0
+            self.reward = 10
             newBody = self.agent[-1:][0]
-            print(newBody)
+            print("REWARD : 20")
             self.agent.insert(0, [newBody[0], newBody[1]])
             self.newReward()
-            
-            return self.board, [self.rewardLocationX, self.rewardLocationY], self.agent, 20, done
+            self.updateBoard()  
+            self.printBoard()
         
         #Touch own body
         if [a,b] in self.agent:
@@ -138,12 +138,12 @@ class ENV:
             self.reset()
             self.newReward()
             done = True
-            print("REWARD : -5")
+            print("REWARD : -15")
             
             self.updateBoard()  
             self.printBoard()
             
-            return self.board, [self.rewardLocationX, self.rewardLocationY], self.agent, -5, done
+            return self.board, [self.rewardLocationX, self.rewardLocationY], self.agent, -15, done
         
         if a != 19 or a != 0 or b != 0 or b != 19:
             self.agent.insert(0, [a,b])
@@ -159,7 +159,7 @@ class ENV:
         self.agent = [[10,10],[10,11],[10,12]]
         self.headAgent = self.agent[0]
         self.run = True
-        #self.reward = 0
+        self.reward = 0
         
         self.board = [
             ["_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_"],

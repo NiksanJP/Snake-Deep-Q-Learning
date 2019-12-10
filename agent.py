@@ -26,12 +26,12 @@ class agent:
         
         #GAME PROPERTIES
         self.batchSize = 128
-        self.learningRate = 0.001
+        self.learningRate = 0.1
         self.discountRate = 0.1
-        self.dropoutRate = 0.2
+        self.dropoutRate = 0.1
         
         self.epsilon = 1
-        self.minEpsilon = 0.05
+        self.minEpsilon = 0.1
         self.epsilon_decay = 0.95
         
         self.count = 0
@@ -44,7 +44,7 @@ class agent:
         self.tableBoardReward = self.createTable()
         #Need to change to pandas database
         self.memoryFile = "memory"
-        self.memory = pd.DataFrame(columns=['currentBoard', 'action', 'reward', 'newBoard', 'done'])
+        self.memory = pd.DataFrame(columns=['currentBoard', 'action', 'reward', 'rewardLocation', 'newBoard', 'done'])
         self.memoryList = []
         
         #Deep Learning 
@@ -105,44 +105,55 @@ class agent:
                 )
             )
     
-    def remember(self, currentBoard, currentAgent, currentRewardLocation, action, reward, newBoard, newAgent, newRewardLocation, done):
-        self.memoryList.append([    currentBoard,
-                                    currentAgent,
-                                    currentRewardLocation,
-                                    action,
-                                    reward,
-                                    newBoard,
-                                    newAgent,
-                                    newRewardLocation,
-                                    done])
+    def remember(self, currentBoard, action, reward, rewardLocation, newBoard, done):
+        currentBoard = self.convertToArray(currentBoard)
+        newBoard = self.convertToArray(newBoard)
         
         self.memory = self.memory.append({'currentBoard':currentBoard, 
                             'action':action, 
                             'reward':reward, 
+                            'rewardLocation': rewardLocation,
                             'newBoard':newBoard, 
                             'done':done}, ignore_index=True)
-        
-        #Save everything in the Q Table
-        self.checkStateExistAgent(str( [newBoard, newRewardLocation] ) )
-        self.checkStateExistsBoard( str( [newAgent, newRewardLocation] ))
     
     def createModel(self):
-        model = tf.keras.models.Sequential([
-            tf.keras.layers.Dense(32, input_shape=(20,20), activation='relu'),
-            tf.keras.layers.Flatten(),
-            tf.keras.layers.Dense(64, activation='relu'),
-            tf.keras.layers.Dropout(self.dropoutRate),
-            tf.keras.layers.Dense(128, activation='relu'),
-            tf.keras.layers.Dropout(self.dropoutRate),
-            tf.keras.layers.Dense(256, activation='relu'),
-            tf.keras.layers.Dropout(self.dropoutRate),
-            tf.keras.layers.Dense(128, activation='relu'),
-            tf.keras.layers.Dropout(self.dropoutRate),
-            tf.keras.layers.Dense(64, activation='relu'),
-            tf.keras.layers.Dropout(self.dropoutRate),
-            tf.keras.layers.Dense(32, activation='relu'),
-            tf.keras.layers.Dense(4, activation="softmax")
-        ])
+        #model = tf.keras.models.Sequential([
+        #    tf.keras.layers.Dense(32, input_shape=(20,20), activation='relu'),
+        #    tf.keras.layers.Flatten(),
+        #    tf.keras.layers.Dense(64, activation='relu'),
+        #    tf.keras.layers.Dropout(self.dropoutRate),
+        #    tf.keras.layers.Dense(128, activation='relu'),
+        #    tf.keras.layers.Dropout(self.dropoutRate),
+        #    tf.keras.layers.Dense(64, activation='relu'),
+        #    tf.keras.layers.Dropout(self.dropoutRate),
+        #    tf.keras.layers.Dense(32, activation='relu'),
+        #    tf.keras.layers.Dense(4, activation='softmax')
+        #])
+        
+        model = tf.keras.models.Model()
+        
+        boardInput = tf.keras.layers.Input(shape=(20,20))
+        x = tf.keras.layers.Dense(64, activation='relu')(boardInput)
+        x = tf.keras.layers.Flatten()(x)
+        x = tf.keras.Model(inputs = boardInput, outputs = x)
+        
+        rewardInput = tf.keras.layers.Input(shape=(1,2))
+        y = tf.keras.layers.Dense(64, activation='relu')(rewardInput)
+        y = tf.keras.layers.Flatten()(y)
+        y = tf.keras.Model(inputs = rewardInput, outputs = y)
+        
+        combined = tf.keras.layers.concatenate([x.output,y.output])
+        
+        hiddenLayer = tf.keras.layers.Dense(64, activation='relu')(combined)
+        hiddenLayer = tf.keras.layers.Dropout(self.dropoutRate)(hiddenLayer)
+        hiddenLayer = tf.keras.layers.Dense(128, activation='relu')(hiddenLayer)
+        hiddenLayer = tf.keras.layers.Dropout(self.dropoutRate)(hiddenLayer)
+        hiddenLayer = tf.keras.layers.Dense(64, activation='relu')(hiddenLayer)
+        hiddenLayer = tf.keras.layers.Dropout(self.dropoutRate)(hiddenLayer)
+        hiddenLayer = tf.keras.layers.Dense(32, activation='relu')(hiddenLayer)
+        hiddenLayer = tf.keras.layers.Dense(4, activation='softmax')(hiddenLayer)
+        
+        model = tf.keras.Model(inputs=[boardInput, rewardInput], outputs = hiddenLayer)
 
         optimizer = tf.keras.optimizers.Adam()
         model.compile( loss = 'categorical_crossentropy', optimizer = optimizer, metrics=['accuracy'])
@@ -159,22 +170,23 @@ class agent:
                 elif board[x][y] == 'H': #Snake
                     board[x][y] = 2
                 elif board[x][y] == 'R': #Reward
-                    board[x][y] = 5
+                    board[x][y] = 0
         return board
     
-    def learn(self):
+    def learn(self, gameLength):
         maxSize = self.memory.shape[0]
         batch = None
         
         print("LEARNING")
+        print(self.epsilon)
         
-        if maxSize >= 1000:
-            batch = self.memory[-self.currentLearnRateCount:]
+        if maxSize >= gameLength:
+            batch = self.memory[-gameLength-100:]
             batch = batch.values.tolist()
-            self.currentLearnRateCount += 100
+            self.currentLearnRateCount += gameLength
             self.batchIndex += self.batchSize
 
-            for currentBoard, action, reward, newBoard, done in batch:
+            for currentBoard, action, reward, rewardLocation, newBoard, done in batch:
                 
                 if action == "right":
                     action = 0
@@ -198,44 +210,57 @@ class agent:
                 newBoard = np.full((20,20), newBoard)
                 newBoard = newBoard[np.newaxis, :, :]
                 
-                finalTarget = self.model.predict(currentBoard)
+                
+                rewardLocation = np.array([np.array([rewardLocation])])
+                finalTarget = self.model.predict([currentBoard,rewardLocation])
                 
                 #Show fit the action that gives the most reward
                 if reward == 5:
-                    finalTarget[0][action] += 0.1
-                elif reward == 0: 
-                    finalTarget[0][action] += 0.01
-                
-                self.model.fit([currentBoard], finalTarget, epochs=1, verbose=0)
+                    finalTarget[0][action] += 0.33
+                    for i in range(4):
+                        if i != action:
+                            finalTarget[0][i] -= 0.11
+                elif reward == (-15) or reward == (-5): 
+                    for i in range(4):
+                        if i != action:
+                            finalTarget[0][i] += finalTarget[0][action]/3
+                    finalTarget[0][action] = 0
+
+                if reward != 0:
+                    self.model.fit([currentBoard, rewardLocation], finalTarget, epochs=1, verbose=0)
                 
                 if self.epsilon > self.minEpsilon and self.currentLearnRateCount >= 100:
                     self.epsilon *= self.epsilon_decay
 
             self.exiting()
         
-        
-                    
-    def chooseAction(self, board, agent, rewardLocation):
-        if random.randrange(0,1) <= self.epsilon:
-            print("RANDOM ACTION")
-            return np.random.choice(self.actions)
+    def boardCorrection(self, board):
         board = self.convertToArray(board)
         board = np.array(board)
         board = np.full((20,20), board)
         board = board[np.newaxis, :, :]
-                
-        rewardLocation = np.array(rewardLocation)
-        rewardLocation = np.full((1,2), rewardLocation)
-        rewardLocation = rewardLocation[np.newaxis, :, :]
-        pred = np.argmax(self.model.predict([board])[0])
+        
+        return board    
+                    
+    def chooseAction(self, board, rewardLocation):
+        if np.random.rand() <= self.epsilon:
+            print("RANDOM ACTION")
+            return np.random.choice([0,1,2,3])
+        board = self.convertToArray(board)
+        board = np.array(board)
+        board = np.full((20,20), board)
+        board = board[np.newaxis, :, :]
+        
+        rewardLocation = np.array([np.array([rewardLocation])])
+        
+        pred = np.argmax(self.model.predict([board, rewardLocation])[0])       
         return pred
     
     def saveWeights(self):
         self.model.save_weights('training/model_weights.h5')
     
     def saveMemory(self):
-        df = pd.DataFrame(self.memory)
-        df.to_csv('training/memory.csv', index=False)
+        self.memory.to_csv('training/memory.csv', index=False)
         print("SAVE ALL SUCCESS")
         
     def exiting(self):
